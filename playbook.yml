@@ -1,0 +1,47 @@
+- name: task-devops
+  hosts: all
+  become: true
+
+  vars:
+    docker_image: "redis"
+    containers: 3
+    redis_config_file: "redis.conf"
+    cf_api_key: 123456789
+
+  tasks:
+  - name: Ping servers
+    ping:
+
+  - name: Install Redis server
+    apt: name=redis-server state=latest
+  
+  - name: Create folder for settings
+    file: path="/usr/local/etc/redis" state=directory
+ 
+  - name: Copy redis settings
+    copy: src="{{ redis_config_file }}" dest="/usr/local/etc/redis/redis.conf" mode=0755
+
+  - name: Getting Redis Docker image
+    community.docker.docker_image:
+      name: "{{ docker_image }}"
+      source: pull
+
+  - name: Creating containers from image
+    community.docker.docker_container:
+      auto_remove: true
+      detach: true
+      image: "{{ docker_image }}"
+      name: "{{ docker_image}}-{{ item }}"
+      state: started
+      volumes:
+        "/usr/local/etc/redis:/usr/local/etc/redis"
+      command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    with_sequence: count={{ containers }}
+
+  - name: Adding SRV to cloudflare
+    community.general.cloudflare_dns:
+      account_api_key: "{{ cf_api_key }}"
+      type: "SRV"
+      zone: "{{ domain }}"
+      service: "redis"
+      state: present
